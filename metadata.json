@@ -1,0 +1,6 @@
+{
+  "name": "Land Mutation and Index Record Manager",
+  "description": "ইউনিয়ন ভূমি অফিসের মিউটেশন আবেদন সংরক্ষণ, হাল/সাবেক সূচী মেলানো এবং গুগল স্প্রেডশিট ডেটাবেস সংযোগ ব্যবস্থাপনা পোর্টাল।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
