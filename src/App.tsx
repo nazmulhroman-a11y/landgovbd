@@ -383,7 +383,7 @@ export default function App() {
           ভূমি সেবা অটো-মিউটেশন পোর্টাল © ২০২৬ | ইউনিয়ন ভূমি সহকারী কার্যালয়
         </p>
         <p className="text-[10px] mt-1 text-slate-600">
-          নিরাপদ ডাটা আদান প্রদানের জন্য গুগল সিকিউর অ্যাপস স্ক্রিপ্ট ও স্প্রেডশিট প্রযুক্তি দ্বারা চালিত
+          Built with @ Nazmul H Roman
         </p>
       </footer>
     </div>
