@@ -25,6 +25,7 @@ export default function IndexBookManager({
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   // Filter records based on search query
   const filteredRecords = indexRecords.filter(record => {
@@ -80,7 +81,8 @@ export default function IndexBookManager({
         }
 
         // Save records locally
-        setIndexRecords(parsedRecords);
+        // Save records locally
+        setIndexRecords(prev => [...parsedRecords, ...prev]);
         setUploadStatus({
           type: 'success',
           message: `সাফল্যের সাথে ${parsedRecords.length}টি দাগের সূচী রেকর্ড আপলোড করা হয়েছে!`
@@ -115,6 +117,90 @@ export default function IndexBookManager({
     reader.readAsText(file, 'UTF-8');
     // Clear input so same file can be uploaded again
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Handle PDF Upload via Gemini
+  const handlePDFUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check if it's a PDF or Image
+    const isPDF = file.type === 'application/pdf';
+    const isImage = file.type.startsWith('image/');
+
+    if (!isPDF && !isImage) {
+      setUploadStatus({
+        type: 'error',
+        message: 'অনুগ্রহ করে একটি PDF বা ইমেজ ফাইল আপলোড করুন।'
+      });
+      return;
+    }
+
+    setUploadStatus(null);
+    setIsSyncing(true);
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        
+        try {
+          const response = await fetch('/api/gemini/parse-index-book', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fileData: base64Data,
+              mimeType: file.type
+            })
+          });
+
+          const resJson = await response.json();
+
+          if (resJson.status === 'success' && Array.isArray(resJson.data)) {
+            const newRecords: IndexPlotRecord[] = resJson.data.map((item: any, index: number) => ({
+              id: `idx_ai_${Date.now()}_${index}`,
+              halDag: item.halDag || '',
+              sabekDag: item.sabekDag || '',
+              ownerName: item.ownerName || '',
+              landAmount: item.landAmount || '',
+              address: item.address || '',
+              remarks: item.remarks || ''
+            }));
+
+            setIndexRecords(prev => [...newRecords, ...prev]);
+            setUploadStatus({
+              type: 'success',
+              message: `জেমিনি AI সাফল্যের সাথে ${newRecords.length}টি রেকর্ড এক্সট্রাক্ট করেছে!`
+            });
+
+            // Sync with Google Sheets if enabled
+            if (isSyncedMode && onSyncWithServer) {
+              await onSyncWithServer([...newRecords, ...indexRecords]);
+            }
+          } else {
+            throw new Error(resJson.message || 'AI তথ্য এক্সট্রাক্ট করতে ব্যর্থ হয়েছে।');
+          }
+        } catch (apiErr: any) {
+          setUploadStatus({
+            type: 'error',
+            message: `AI প্রসেসিং ত্রুটি: ${apiErr.message}`
+          });
+        } finally {
+          setIsSyncing(false);
+        }
+      };
+    } catch (err: any) {
+      setIsSyncing(false);
+      setUploadStatus({
+        type: 'error',
+        message: `ফাইল রিডিং ত্রুটি: ${err.message}`
+      });
+    }
+
+    if (pdfInputRef.current) pdfInputRef.current.value = '';
   };
 
   // Download sample CSV template
@@ -199,13 +285,29 @@ export default function IndexBookManager({
               className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/15"
             >
               <Upload size={16} />
-              {isSyncing ? 'স্প্রেডশিটে সিঙ্ক হচ্ছে...' : 'সূচী বই আপলোড (CSV)'}
+              {isSyncing ? 'প্রসেসিং...' : 'সূচী বই আপলোড (CSV)'}
             </button>
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileUpload}
               accept=".csv"
+              className="hidden"
+            />
+
+            <button
+              onClick={() => pdfInputRef.current?.click()}
+              disabled={isSyncing}
+              className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-blue-600/15"
+            >
+              <Upload size={16} />
+              {isSyncing ? 'AI প্রসেসিং হচ্ছে...' : 'সূচী বই আপলোড (PDF AI)'}
+            </button>
+            <input
+              type="file"
+              ref={pdfInputRef}
+              onChange={handlePDFUpload}
+              accept=".pdf,image/*"
               className="hidden"
             />
 

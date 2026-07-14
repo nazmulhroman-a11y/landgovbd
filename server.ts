@@ -176,6 +176,107 @@ JSON Schema:
     }
   });
 
+  // API Route: Use Gemini to parse Index Plot Records from PDF or Image
+  app.post("/api/gemini/parse-index-book", async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({
+        status: "error",
+        message: "গুগল জেমিনি এপিআই কি (GEMINI_API_KEY) পাওয়া যায়নি।"
+      });
+    }
+
+    const { fileData, mimeType } = req.body;
+    if (!fileData) {
+      return res.status(400).json({
+        status: "error",
+        message: "ফাইলের তথ্য পাওয়া যায়নি।"
+      });
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: apiKey,
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' }
+        }
+      });
+
+      const promptText = `You are an expert in Bangladesh Land Records. 
+Your task is to analyze the attached "Index Book" (হাল ও সাবেক দাগের সূচী বই) which lists plots, owners, and land amounts.
+Please extract all records into a structured JSON array.
+
+FIELDS TO EXTRACT for each record:
+1. halDag (হাল দাগ): The current plot number. Convert Bengali digits to English.
+2. sabekDag (সাবেক দাগ): The previous plot number. Convert Bengali digits to English.
+3. ownerName (মালিকের নাম): Full name of the owner/possessor (মালিক/জোতদার).
+4. landAmount (জমির পরিমাণ): The amount of land, usually in decimals (শতাংশ). Extract the numeric value only. Convert Bengali digits to English.
+5. address (ঠিকানা/মৌজা): The Mouza or address mentioned for the plot.
+6. remarks (মন্তব্য): Any remarks or khatian numbers mentioned.
+
+You must respond ONLY with a valid JSON array of objects. Do not include markdown styling or explanations.
+
+JSON Schema:
+[
+  {
+    "halDag": "string",
+    "sabekDag": "string",
+    "ownerName": "string",
+    "landAmount": "string",
+    "address": "string",
+    "remarks": "string"
+  }
+]`;
+
+      const modelsToTry = ["gemini-2.0-flash", "gemini-1.5-flash"];
+      let response = null;
+      let lastError: any = null;
+
+      for (const modelName of modelsToTry) {
+        try {
+          const resObj = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                inlineData: {
+                  mimeType: mimeType || "application/pdf",
+                  data: fileData,
+                },
+              },
+              { text: promptText }
+            ]
+          });
+          
+          if (resObj && resObj.text) {
+            response = resObj;
+            break;
+          }
+        } catch (err: any) {
+          lastError = err;
+        }
+      }
+
+      if (!response || !response.text) {
+        throw new Error(lastError?.message || "Failed to parse index book");
+      }
+
+      const cleanText = response.text.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsedData = JSON.parse(cleanText);
+
+      res.json({
+        status: "success",
+        data: Array.isArray(parsedData) ? parsedData : [parsedData]
+      });
+
+    } catch (err: any) {
+      console.error("Gemini Index Book Error:", err);
+      res.status(500).json({
+        status: "error",
+        message: "জেমিনি এআই দিয়ে সূচী বই বিশ্লেষণ করতে ব্যর্থ হয়েছে।"
+      });
+    }
+  });
+
   // Vite Integration
   if (process.env.NODE_ENV !== "production") {
     console.log("Starting server in development mode...");
